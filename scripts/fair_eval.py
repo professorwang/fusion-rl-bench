@@ -127,10 +127,12 @@ def run_episode(env, controller, seed, max_steps=50):
 
 
 def summarize(name, rows):
+    valid_rows = [r for r in rows if r["sample_valid"]]  # 异常 reset 样本不得混入任何汇总指标
+
     def m(key, only_complete=True):
-        vals = [r[key] for r in rows if r.get(key) is not None and (r["complete"] or not only_complete)]
+        vals = [r[key] for r in valid_rows if r.get(key) is not None and (r["complete"] or not only_complete)]
         return float(np.mean(vals)) if vals else float("nan")
-    valid_rows = [r for r in rows if r["sample_valid"]]
+
     n_complete = sum(1 for r in valid_rows if r["complete"])
     return {
         "controller": name,

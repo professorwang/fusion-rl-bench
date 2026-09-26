@@ -79,3 +79,23 @@ BC_INIT=code/fusion-rl-bench/runs/bc_policy.pt .venv-gs/Scripts/python -X utf8 -
 另注：PPO 微调模型初始化自旧版 Tanh 头 BC，与新版 BC 的归因须分开；当前 PPO（1.27）低于新 BC（0.19），"RL 微调贡献"待消融（BC / 迁移未微调 / 微调后三版本对照）。
 
 数据：`results/fair_eval_v012.json`；图：`assets/fair_eval_v012.png`、`assets/traj_diagnosis.png`。
+
+---
+
+## 附录 v0.1.3（2026-09-26 第三轮机制复核后）
+
+**新增预先指定的低增益 PD 对照**（统一评估，种子 3000–3009；另批 3010–3019 复测）：
+
+| 控制器 | 第一批 | 第二批 |
+|---|---|---|
+| **PD（Kp=1, Kd=0.3，仅 P6）** | **0.09 cm** | **0.08 cm** |
+| BC（新版） | 0.19 cm | 0.16 cm |
+| PPO（冻结） | 1.27 cm | 1.28 cm |
+
+**机制表述改写**：BC 超过高增益教师属实，但**简单降低 PD 增益即可取得更低误差**——增益调参覆盖全部性能区间。"带噪学习产生平滑化"由"已诊断发现"降级为**机制假说**（阶段 B 消融对象：同增益族 PD 轨迹族 vs BC 轨迹、无噪声专家数据对照、LQR 对照）。
+
+**统计修复**：异常 reset 样本不再混入任何汇总指标（fair_eval `summarize` 统一过滤 `sample_valid`；train_ppo 评估跳过异常 reset 并修正失败率分母）。当前发布样本全部有效，既有数值不受影响。
+
+**归因注意**：冻结 PPO 初始化自旧版 Tanh 头 BC，不能与新版 BC 直接解释为"微调前后"对比（阶段 B 将报告 BC / 迁移未微调 / 微调后三版本）。
+
+数据：`results/fair_eval_v013_s3000.json`、`results/fair_eval_v013_s3010.json`；图：`assets/fair_eval_v013.png`。

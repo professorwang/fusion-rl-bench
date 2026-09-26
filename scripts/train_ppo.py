@@ -54,9 +54,14 @@ class EvalCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.num_timesteps % EVAL_EVERY == 0 and self.num_timesteps > 0:
-            rewards, valid_errs, fails = [], [], 0
+            rewards, valid_errs, fails, ran = [], [], 0, 0
             for ep in range(EVAL_EPISODES):
                 obs, info = self.eval_env.reset(seed=2000 + ep)  # 固定评估种子
+                if info.get("reset_anomaly") or info.get("obs_error"):
+                    # v0.1.2 复核：异常 reset 样本显式剔除，不得混入评估
+                    print(f"  [eval] 跳过异常 reset 样本 (seed={2000+ep})", flush=True)
+                    continue
+                ran += 1
                 done = False
                 cum = 0.0
                 ep_errs = []
@@ -78,7 +83,7 @@ class EvalCallback(BaseCallback):
                 "eval_reward_mean": float(np.mean(rewards)),
                 "valid_pos_err_mean": float(np.mean(valid_errs)) if valid_errs else float("nan"),
                 "n_valid": len(valid_errs),
-                "fail_rate": fails / EVAL_EPISODES,
+                "fail_rate": fails / max(ran, 1),
             }
             self.rows.append(row)
             print(f"[eval@{row['steps']}] reward={row['eval_reward_mean']:.3f} "
