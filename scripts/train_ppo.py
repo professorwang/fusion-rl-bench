@@ -80,12 +80,15 @@ class EvalCallback(BaseCallback):
                     valid_errs.append(float(np.mean(ep_errs)))
             row = {
                 "steps": self.num_timesteps,
-                "eval_reward_mean": float(np.mean(rewards)),
+                "eval_reward_mean": float(np.mean(rewards)) if rewards else float("nan"),
                 "valid_pos_err_mean": float(np.mean(valid_errs)) if valid_errs else float("nan"),
                 "n_valid": len(valid_errs),
-                "fail_rate": fails / max(ran, 1),
+                "fail_rate": fails / ran if ran > 0 else float("nan"),  # ran=0 时显示"无有效评估"而非 0%
             }
             self.rows.append(row)
+            if ran == 0:
+                print(f"[eval@{row['steps']}] 无有效评估（全部 reset 异常）", flush=True)
+                return True
             print(f"[eval@{row['steps']}] reward={row['eval_reward_mean']:.3f} "
                   f"valid_pos_err={row['valid_pos_err_mean']*100:.2f}cm (n={row['n_valid']}) "
                   f"fail={row['fail_rate']:.0%}", flush=True)

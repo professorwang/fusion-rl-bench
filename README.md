@@ -24,9 +24,9 @@
 
 ![paired evaluation](assets/fair_eval_v013.png)
 
-**The honest headline**: learned controllers beat their high-gain teacher — *but simply lowering the PD gains achieves the lowest error of all*. Gain tuning alone spans the entire performance range; BC lands between mid- and low-gain PD. Trajectory comparison shows gain-saturated PD chatters (rail-to-rail actions injecting a limit cycle), while low-gain or smoothed control avoids it. The "BC learns smoothing from noisy expert data" reading is currently a **mechanism hypothesis**, not an established finding — it is the target of our stage-B ablation.
+**The honest headline**: learned controllers beat their high-gain teacher — *but simply lowering the PD gains achieves the lowest error of all*. Across just these three gain settings, tuning alone already reaches errors comparable to or better than the learned controllers (three points cannot show the full range); BC lands between mid- and low-gain PD. Trajectory comparison shows gain-saturated PD chatters (rail-to-rail actions injecting a limit cycle), while low-gain or smoothed control avoids it. The "BC learns smoothing from noisy expert data" reading is currently a **mechanism hypothesis**, not an established finding — it is the target of our stage-B ablation.
 
-**What this does NOT establish**: single training seed, a **linearized MAST-U-like model** (not an exact MAST-U replica), 25 ms simulated episodes, **asymmetric actuator authority** (PD single-channel vs learned 3-channel), and no LQR/LQG comparison yet — LQR is natively smooth on a linear plant and is the real arbiter. The frozen PPO was initialized from an earlier BC version, so BC→PPO attribution must be reported separately.
+**What this does NOT establish**: single training seed, a **linearized MAST-U-like model** (not an exact MAST-U replica), 25 ms simulated episodes, **asymmetric actuator authority** (PD single-channel vs learned 3-channel), and no LQR/LQG comparison yet — LQR is a *to-be-verified* classical baseline here (its textbook optimality does not transfer directly to our actuator-clipped, short-horizon L1-error task). The frozen PPO was initialized from an earlier BC version, so BC→PPO attribution must be reported separately.
 
 > v0.1.2→v0.1.3 changelog: added pre-specified low-gain PD control (PD(1,0.3)); fixed invalid-reset samples leaking into summary metrics (evaluator now filters `sample_valid` in all summaries; training eval skips anomalous resets); mechanism framing downgraded to hypothesis.
 
@@ -120,7 +120,7 @@ Also cite FreeGSNKE (Amorisco et al., *Physics of Plasmas* 31, 042517, 2024) and
 
 本仓库提供基于真实物理后端（UKAEA FreeGSNKE 平衡求解器、DeepMind TORAX 输运模拟器）的托卡马克等离子体控制强化学习环境，以及经典 PD / 行为克隆 / PPO 微调的完整基线链与**统一口径的配对评估流程**。
 
-**当前状态（v0.1.3）**：工程链路完整可复现。统一口径配对评估（10 个配对初始条件，全部完整）：PD(100/100) 2.42cm → PD(10/3) 1.44cm → **PD(1/0.3) 0.09cm**、BC 0.19cm、BC+PPO 1.27cm。诚实的结论是：**增益调参本身覆盖全部性能区间，学习类控制器超过高增益"老师傅"但低于简单调低增益的 PD**；轨迹对照显示高增益 PD 饱和振荡、低增益或平滑控制可消除——"BC 从带噪数据学到平滑化"目前仅为机制假说，是阶段 B 消融对象。另有单训练种子、线性化 MAST-U-like 模型、25 毫秒回合、执行器权限不对等、LQR 未对比等限制。此前基于口径不一致数据的"超越"表述已撤回（见 `notebooks/W06`）。
+**当前状态（v0.1.3）**：工程链路完整可复现。统一口径配对评估（10 个配对初始条件，全部完整）：PD(100/100) 2.42cm → PD(10/3) 1.44cm → **PD(1/0.3) 0.09cm**、BC 0.19cm、BC+PPO 1.27cm。诚实的结论是：**学习类控制器超过了高增益"老师傅"，但简单调低 PD 增益即可取得更低误差**（三组增益点尚不足以宣称调参覆盖全部性能区间）；轨迹对照显示高增益 PD 饱和振荡、低增益或平滑控制可消除——"BC 从带噪数据学到平滑化"目前仅为机制假说，是阶段 B 消融对象。另有单训练种子、线性化 MAST-U-like 模型、25 毫秒回合、执行器权限不对等、LQR/LQG（待验证的经典基线）未对比等限制。此前基于口径不一致数据的"超越"表述已撤回（见 `notebooks/W06`）。
 
 工程实录（复现报告、性能分析、三次翻车根因、评估方法返工）见 `notebooks/`；环境搭建与排坑记录见 `docs/SETUP.md`。
 
