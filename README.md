@@ -16,17 +16,21 @@
 
 | Controller | Complete episodes | Whole-trajectory \|Z–Z*\| MAE |
 |---|---|---|
-| Classical PD (Kp=100, Kd=100, P6 only) | 10/10 | 2.42 cm |
-| Classical PD (Kp=10, Kd=3, P6 only) | 10/10 | 1.44 cm |
-| **Classical PD (Kp=1, Kd=0.3, P6 only)** | 10/10 | **0.09 cm** (0.08 cm on a second seed batch) |
+| **Classical PD (Kp=3, Kd=0.3, P6 only — best of 36-pair gain surface)** | 10/10 | **0.014 cm** |
+| Classical PD (Kp=1, Kd=0.3, P6 only) | 10/10 | 0.09 cm (0.08 cm on a second seed batch) |
 | BC (imitating high-gain PD) | 10/10 | 0.19 cm |
+| LQI (qi=50, r=1, integral action) | 10/10 | 0.91 cm |
 | BC + PPO fine-tune (16,128 steps) | 10/10 | 1.27 cm |
+| naive LQR (R=100) | 10/10 | 2.19 cm |
+| LQI (r=1000, best single-channel) | 10/10 | 1.92 cm |
 
-![paired evaluation](assets/fair_eval_v013.png)
+![controller family portrait](assets/lqr_lqi_eval.png) ![PD gain surface](assets/pd_gain_surface.png)
 
-**The honest headline**: learned controllers beat their high-gain teacher — *but simply lowering the PD gains achieves the lowest error of all*. Across just these three gain settings, tuning alone already reaches errors comparable to or better than the learned controllers (three points cannot show the full range); BC lands between mid- and low-gain PD. Trajectory comparison shows gain-saturated PD chatters (rail-to-rail actions injecting a limit cycle), while low-gain or smoothed control avoids it. The "BC learns smoothing from noisy expert data" reading is currently a **mechanism hypothesis**, not an established finding — it is the target of our stage-B ablation.
+**The honest headline**: learned controllers beat their high-gain teacher — *but classical gain tuning is remarkably strong*. The PD gain surface (B2, 36 pre-specified gain pairs) shows a low-gain basin at **0.01–0.11 cm** (best: PD(3,0.3) = **0.014 cm**, near the model's resolution limit on this 25 ms linear task) and a failure region at high derivative gains. Trajectory comparison shows gain-saturated PD chatters (rail-to-rail actions injecting a limit cycle), while low-gain or smoothed control avoids it. The "BC learns smoothing from noisy expert data" reading is currently a **mechanism hypothesis**, not an established finding — it is a target of our stage-B ablation.
 
-**What this does NOT establish**: single training seed, a **linearized MAST-U-like model** (not an exact MAST-U replica), 25 ms simulated episodes, **asymmetric actuator authority** (PD single-channel vs learned 3-channel), and no LQR/LQG comparison yet — LQR is a *to-be-verified* classical baseline here (its textbook optimality does not transfer directly to our actuator-clipped, short-horizon L1-error task). The frozen PPO was initialized from an earlier BC version, so BC→PPO attribution must be reported separately.
+**What this does NOT establish**: single training seed for the learned controllers, a **linearized MAST-U-like model** (not an exact MAST-U replica), 25 ms simulated episodes, **asymmetric actuator authority** (PD/LQI-P6 single-channel vs learned 3-channel), and model-based baselines limited by the identified model's validity region. On this task, a well-tuned classical controller is the ceiling — learned controllers must prove their value where classical control cannot go (multiple operating points, nonlinearity, noise, real-device constraints): that is our stage-B/C program. The frozen PPO was initialized from an earlier BC version, so BC→PPO attribution is reported separately.
+
+> v0.1.3→v0.2.0 changelog: B0 (discrete model validated: dominant eigenvalue within 0.14% of simulator) + B1 (naive LQR shows steady offset; LQI fixes it to 0.91cm) + B2 (PD gain surface: low-gain basin 0.014cm) — see `notebooks/B0`、`notebooks/B1`。
 
 > v0.1.2→v0.1.3 changelog: added pre-specified low-gain PD control (PD(1,0.3)); fixed invalid-reset samples leaking into summary metrics (evaluator now filters `sample_valid` in all summaries; training eval skips anomalous resets); mechanism framing downgraded to hypothesis.
 
@@ -91,7 +95,10 @@ Frozen models and raw evaluation data are attached to [GitHub Releases](https://
 
 ## Roadmap (verification before claims)
 
-- [ ] Re-tuned PD + **LQR/LQG** classical baselines; single-P6 and three-coil comparisons reported separately
+- [x] **B0 — discrete model validation**: sysid at actual 0.5 ms control period; one-step Zcur err 1.3%; dominant eigenvalue within 0.14% of simulator (1.1254 vs 1.1238) (`notebooks/B0`)
+- [x] **B1 — LQR/LQI baselines**: naive DARE-LQR shows steady-state offset (model mismatch + no integral action); LQI fixes it (0.91 cm, 3ch) but still trails PD(1,0.3)=0.09cm and BC=0.19cm; unit-confusion pitfalls documented (`notebooks/B1`)
+- [ ] B2 — PD gain-family performance surface (running)
+- [ ] B3 — mechanism ablation (teacher gain × expert noise × observation × horizon)
 - [ ] ≥5 independent training seeds; frozen 100–200 test ICs; confidence intervals
 - [ ] Robustness: observation noise, actuation latency, parameter error, sustained disturbances
 - [ ] Re-check in a convergent nonlinear evolution model
@@ -120,7 +127,7 @@ Also cite FreeGSNKE (Amorisco et al., *Physics of Plasmas* 31, 042517, 2024) and
 
 本仓库提供基于真实物理后端（UKAEA FreeGSNKE 平衡求解器、DeepMind TORAX 输运模拟器）的托卡马克等离子体控制强化学习环境，以及经典 PD / 行为克隆 / PPO 微调的完整基线链与**统一口径的配对评估流程**。
 
-**当前状态（v0.1.3）**：工程链路完整可复现。统一口径配对评估（10 个配对初始条件，全部完整）：PD(100/100) 2.42cm → PD(10/3) 1.44cm → **PD(1/0.3) 0.09cm**、BC 0.19cm、BC+PPO 1.27cm。诚实的结论是：**学习类控制器超过了高增益"老师傅"，但简单调低 PD 增益即可取得更低误差**（三组增益点尚不足以宣称调参覆盖全部性能区间）；轨迹对照显示高增益 PD 饱和振荡、低增益或平滑控制可消除——"BC 从带噪数据学到平滑化"目前仅为机制假说，是阶段 B 消融对象。另有单训练种子、线性化 MAST-U-like 模型、25 毫秒回合、执行器权限不对等、LQR/LQG（待验证的经典基线）未对比等限制。此前基于口径不一致数据的"超越"表述已撤回（见 `notebooks/W06`）。
+**当前状态（v0.2.0）**：工程链路完整可复现，且已完成 B0（离散模型验证）与 B1（LQR/LQI 基线）。统一口径配对评估全家福：低增益盆地 PD(3,0.3)=**0.014cm**（36 组增益性能面的最优）→ PD(1,0.3) 0.09cm → BC 0.19cm → LQI(三通道） 0.91cm → PPO 1.27cm → 朴素 LQR 2.19cm（稳态偏差，已诊断）。诚实的结论是：**在这个任务上，会调参的经典控制就是天花板**；朴素 DARE-LQR 并不自动赢（稳态偏差+无积分作用），模型驱动设计的每一步都必须数值验证。AI 控制器要证明价值，必须去经典控制力所不能及的地方（多工况/非线性/噪声/真机约束）——这是阶段 B/C 计划。限制：学习类为单训练种子、线性化 MAST-U-like 模型、25 毫秒回合、执行器权限不对等。此前基于口径不一致数据的"超越"表述已撤回（见 `notebooks/W06`）。
 
 工程实录（复现报告、性能分析、三次翻车根因、评估方法返工）见 `notebooks/`；环境搭建与排坑记录见 `docs/SETUP.md`。
 
