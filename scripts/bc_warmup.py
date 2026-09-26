@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "envs"))
 from freegsnke_linear_pos_env import FreeGSNKELinearPosEnv  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "runs")
+os.makedirs(OUT, exist_ok=True)  # v0.1.1：fresh clone 不含 runs/，保存前必须建目录
 KP, KD = 100.0, 100.0
 N_EPISODES = 150
 EXPERT_NOISE = 0.05  # 专家动作噪声（扩大状态覆盖；过大会抬高 MSE 噪声地板，0.15 已实测欠拟合）
@@ -84,6 +85,8 @@ def evaluate(env, policy, n_episodes=10):
 
 
 def main():
+    torch.manual_seed(0)  # v0.1.1：固定初始化与抽样种子（审核 P2）
+    np.random.seed(0)
     env = FreeGSNKELinearPosEnv(
         control_coils=["P6", "D5", "P5"], max_steps=50, steps_per_action=1,
         max_voltage=500.0, init_disturb_steps=3, init_disturb_voltage=50.0,

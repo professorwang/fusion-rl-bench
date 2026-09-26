@@ -38,51 +38,67 @@ def make_env():
 
 
 class EvalCallback(BaseCallback):
-    """周期性评估：独立环境跑 EVAL_EPISODES 个 episode，记录位置误差（Zcur+Rin 偏差）。"""
+    """周期性评估：独立环境跑 EVAL_EPISODES 个 episode。
 
-    def __init__(self):
+    v0.1.1（审核 R3/R6）：
+    - 失败与有效轨迹误差**分开报告**（失败回合不计入误差均值，避免"失败但误差零"）；
+    - 评估 episode 使用固定种子序列（2000+），保证各检查点可比；
+    - 每次运行写入独立 run 目录，CSV 采用追加模式，不再覆盖历史（审核 P1）。
+    """
+
+    def __init__(self, run_dir):
         super().__init__()
         self.rows = []
+        self.run_dir = run_dir
         self.eval_env = make_env()
 
     def _on_step(self) -> bool:
         if self.num_timesteps % EVAL_EVERY == 0 and self.num_timesteps > 0:
-            rewards, final_errs, fails = [], [], 0
-            for _ in range(EVAL_EPISODES):
-                obs, info = self.eval_env.reset()
+            rewards, valid_errs, fails = [], [], 0
+            for ep in range(EVAL_EPISODES):
+                obs, info = self.eval_env.reset(seed=2000 + ep)  # 固定评估种子
                 done = False
                 cum = 0.0
-                last_d = np.zeros(4)
+                ep_errs = []
                 while not done:
                     action, _ = self.model.predict(obs, deterministic=True)
                     obs, r, term, trunc, i2 = self.eval_env.step(action)
                     cum += r
                     if not term:
-                        last_d = obs[:4]
+                        ep_errs.append((abs(obs[2]) + abs(obs[3])) * 0.1)  # 归一化→米
                     done = term or trunc
                     if term:
                         fails += 1
                 rewards.append(cum)
-                final_errs.append((abs(last_d[2]) + abs(last_d[3])) * 0.1)  # 归一化→米
+                if ep_errs:  # 仅存活轨迹计入误差
+                    valid_errs.append(float(np.mean(ep_errs)))
             row = {
                 "steps": self.num_timesteps,
                 "eval_reward_mean": float(np.mean(rewards)),
-                "final_pos_err_mean": float(np.nanmean(final_errs)),
+                "valid_pos_err_mean": float(np.mean(valid_errs)) if valid_errs else float("nan"),
+                "n_valid": len(valid_errs),
                 "fail_rate": fails / EVAL_EPISODES,
             }
             self.rows.append(row)
             print(f"[eval@{row['steps']}] reward={row['eval_reward_mean']:.3f} "
-                  f"final_pos_err={row['final_pos_err_mean']*100:.2f}cm "
+                  f"valid_pos_err={row['valid_pos_err_mean']*100:.2f}cm (n={row['n_valid']}) "
                   f"fail={row['fail_rate']:.0%}", flush=True)
-            with open(os.path.join(OUT, "train_log.csv"), "w", newline="") as f:
+            csv_path = os.path.join(self.run_dir, "train_log.csv")
+            write_header = not os.path.exists(csv_path)
+            with open(csv_path, "a", newline="") as f:
                 w = csv.DictWriter(f, fieldnames=list(self.rows[0].keys()))
-                w.writeheader()
-                w.writerows(self.rows)
-            self.model.save(os.path.join(OUT, f"ppo_{self.num_timesteps}"))
+                if write_header:
+                    w.writeheader()
+                w.writerow(row)
+            self.model.save(os.path.join(self.run_dir, f"ppo_{self.num_timesteps}"))
         return True
 
 
 def main():
+    # v0.1.1：每次运行独立目录（追加而非覆盖；审核 P1）。可用 RUN_DIR 覆盖。
+    run_dir = os.environ.get("RUN_DIR") or os.path.join(
+        OUT, time.strftime("run_%Y%m%d_%H%M%S"))
+    os.makedirs(run_dir, exist_ok=True)
     env = make_env()
     resume = os.environ.get("RESUME", "")
     bc_init = os.environ.get("BC_INIT", "")
@@ -97,7 +113,10 @@ def main():
             policy_kwargs=dict(net_arch=[64, 64]),
         )
         if bc_init and os.path.exists(bc_init):
-            # BC 权重预热：bc net[0,2]→policy_net，net[4]→action_net；log_std 压低使初始策略近确定性
+            # BC 权重预热：bc net[0,2]→policy_net，net[4]→action_net。
+            # 注意（审核 R4）：BC 输出层 Tanh 与 PPO 线性均值+裁剪的映射并不等价，
+            # 迁移后策略函数会发生变化；log_std=-1.0 对应归一化标准差≈0.368，
+            # 在 500V 尺度下约 184V，不能视为"接近确定性"。
             import torch
             sd = torch.load(bc_init, map_location="cpu")
             pnet = model.policy.mlp_extractor.policy_net
@@ -107,11 +126,11 @@ def main():
                 pnet[2].weight.copy_(sd["net.2.weight"]); pnet[2].bias.copy_(sd["net.2.bias"])
                 anet.weight.copy_(sd["net.4.weight"]); anet.bias.copy_(sd["net.4.bias"])
                 model.policy.log_std.fill_(-1.0)
-            print(f"BC 预热权重已加载（{bc_init}），log_std=-1.0", flush=True)
+            print(f"BC 预热权重已加载（{bc_init}），log_std=-1.0（映射差异见代码注释 R4）", flush=True)
     t0 = time.time()
-    model.learn(total_timesteps=TOTAL_STEPS, callback=EvalCallback(), reset_num_timesteps=not resume)
-    model.save(os.path.join(OUT, "ppo_final"))
-    print(f"训练完成，用时 {(time.time()-t0)/60:.1f} 分钟", flush=True)
+    model.learn(total_timesteps=TOTAL_STEPS, callback=EvalCallback(run_dir), reset_num_timesteps=not resume)
+    model.save(os.path.join(run_dir, "ppo_final"))
+    print(f"训练完成，用时 {(time.time()-t0)/60:.1f} 分钟，输出目录 {run_dir}", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,10 @@
 """pd_baseline.py — 经典 PD 控制器 baseline：P6 电压 = -(Kp·z_err + Kd·ż_err)
 
-每个 RL benchmark 都需要经典控制器对照（DeepMind TCV 论文亦如此）。
-同时验证环境/奖励良定义：若 PD 能稳住而 PPO 学不会，说明是 RL 调参问题而非任务不可行。
+每个 RL benchmark 都需要经典控制器对照。
+v0.1.1 修复（对应 2026-09-26 发表前审核 R2）：
+- 挑参比较字段 bug：`err < best[1]` 误比 Kd，应为 `best[2]`（err）；
+- 公平性：与 BC/PPO 相同的初始扰动（3 步 × 50 V 随机方向）与控制线圈集合；
+- 多 episode 评估：每组增益跑 N_EPISODES 个 episode，报告完整回合比例与均值。
 """
 import os
 import sys
@@ -11,8 +14,10 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "envs"))
 from freegsnke_linear_pos_env import FreeGSNKELinearPosEnv  # noqa: E402
 
+N_EPISODES = 10
 
-def run_episode(env, kp, kd, p6_idx, max_steps=50, seed=0):
+
+def run_episode(env, kp, kd, p6_idx, seed):
     obs, _ = env.reset(seed=seed)
     z_prev = obs[2]
     errs, holds = [], 0
@@ -32,22 +37,37 @@ def run_episode(env, kp, kd, p6_idx, max_steps=50, seed=0):
 
 
 def main():
-    env = FreeGSNKELinearPosEnv(control_coils=["P6", "D5", "P5"],
-                                max_steps=50, steps_per_action=1, max_voltage=500.0)
+    env = FreeGSNKELinearPosEnv(
+        control_coils=["P6", "D5", "P5"], max_steps=50, steps_per_action=1,
+        max_voltage=500.0, init_disturb_steps=3, init_disturb_voltage=50.0,
+    )
     p6_idx = env.control_coils.index("P6")
-    print("Kp×Kd 网格扫描（P6 单通道 PD）：")
+    print(f"Kp×Kd 网格扫描（P6 单通道 PD，{N_EPISODES} episode/组，带初始扰动）：")
     best = None
+    n_success_total = 0
     for kp in [10, 30, 100, 300]:
         for kd in [3, 10, 30, 100]:
-            holds, err, fail = run_episode(env, kp, kd, p6_idx)
-            tag = "✅" if holds >= 50 else "  "
-            print(f"{tag} Kp={kp:4d} Kd={kd:4d}: 存活 {holds:2d}/50 步, 平均偏差 {err*100:.2f}cm ({fail})")
-            if holds >= 50 and (best is None or err < best[1]):
-                best = (kp, kd, err)
+            holds_l, errs_l, fails = [], [], 0
+            for seed in range(N_EPISODES):
+                holds, err, fail = run_episode(env, kp, kd, p6_idx, seed)
+                holds_l.append(holds)
+                errs_l.append(err)
+                if fail:
+                    fails += 1
+            full = sum(1 for h in holds_l if h >= 50)
+            n_success_total += full
+            mean_err = float(np.nanmean(errs_l))
+            tag = "✅" if full == N_EPISODES else "  "
+            print(f"{tag} Kp={kp:4d} Kd={kd:4d}: 完整回合 {full}/{N_EPISODES}, "
+                  f"平均偏差 {mean_err*100:.2f}cm, 失败 {fails}")
+            if full == N_EPISODES and (best is None or mean_err < best[2]):
+                best = (kp, kd, mean_err)
+    n_groups = 16
+    print(f"\n全存活增益组: （见 ✅ 标记）")
     if best:
-        print(f"\n最佳: Kp={best[0]} Kd={best[1]}, 平均偏差 {best[2]*100:.2f}cm —— 经典控制可稳定 ✅")
+        print(f"最佳: Kp={best[0]} Kd={best[1]}, 平均偏差 {best[2]*100:.2f}cm —— 经典控制可稳定 ✅")
     else:
-        print("\n所有组合均失败 —— 需检查任务设置")
+        print("所有组合均有失败回合 —— 需检查任务设置")
 
 
 if __name__ == "__main__":

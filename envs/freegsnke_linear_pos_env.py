@@ -202,15 +202,19 @@ class FreeGSNKELinearPosEnv(gym.Env):
                         v[i] = d * self.init_disturb_voltage
                     self._stepping.nlstepper(active_voltage_vec=v, linear_only=True,
                                              no_GS=True, verbose=False)
-            except Exception:
-                pass  # 扰动失败则退化为无扰动起点
+            except Exception as e:
+                # v0.1.1（审核 R6）：不再静默吞错——记录告警并继续（退化为无扰动起点）
+                import warnings
+                warnings.warn(f"初始扰动施加失败，退化为无扰动起点：{e!r}")
 
         self._step_count = 0
         self._prev_d = None  # 每个 episode 导数观测从零开始
         try:
             return self._obs(), {"target": self._target.tolist()}
-        except Exception:
-            return np.zeros(self.observation_space.shape, dtype=np.float32), {}
+        except Exception as e:
+            import warnings
+            warnings.warn(f"reset 观测构建失败，返回零观测：{e!r}")
+            return np.zeros(self.observation_space.shape, dtype=np.float32), {"obs_error": repr(e)}
 
     def step(self, action):
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)
@@ -235,9 +239,11 @@ class FreeGSNKELinearPosEnv(gym.Env):
                 fail = fail or "nan_state"
             elif abs(d[2]) > 1.0 or abs(d[3]) > 1.0:
                 fail = fail or "position_lost"  # 垂直/径向位置丢失（>10cm 偏移）
-        except Exception:
+        except Exception as e:
             fail = fail or "obs_error"
             obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+            import warnings
+            warnings.warn(f"step 观测构建失败（episode 终止）：{e!r}")
 
         terminated = fail is not None
         truncated = self._step_count >= self.max_steps
