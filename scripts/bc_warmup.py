@@ -52,14 +52,19 @@ def collect(env, n_episodes):
 
 
 class BCPolicy(nn.Module):
-    """与 SB3 MlpPolicy(net_arch=[64,64]) 同构，便于权重迁移。"""
+    """与 SB3 MlpPolicy(net_arch=[64,64]) 同构，便于权重迁移。
+
+    v0.1.1 复核（E项）：输出层改为**线性**（不再接 Tanh），与 PPO 的
+    "线性均值→环境内裁剪"结构一致——迁移复制权重后动作映射等价；
+    推理时的 [-1,1] 裁剪在控制器/环境侧统一处理。
+    """
 
     def __init__(self, obs_dim, act_dim):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(obs_dim, 64), nn.Tanh(),
             nn.Linear(64, 64), nn.Tanh(),
-            nn.Linear(64, act_dim), nn.Tanh(),  # 动作空间 [-1,1]
+            nn.Linear(64, act_dim),  # 线性输出（迁移等价，见模块注释）
         )
 
     def forward(self, x):
@@ -74,6 +79,7 @@ def evaluate(env, policy, n_episodes=10):
         while not done:
             with torch.no_grad():
                 a = policy(torch.as_tensor(obs, dtype=torch.float32)).numpy()
+            a = np.clip(a, -1, 1)  # 线性输出头：裁剪在控制器侧统一处理（与 PPO 迁移后行为一致）
             obs, r, term, trunc, info = env.step(a)
             done = term or trunc
             if not term:

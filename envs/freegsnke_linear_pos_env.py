@@ -191,6 +191,7 @@ class FreeGSNKELinearPosEnv(gym.Env):
         self._ip_index = getattr(self._stepping, "Iplasma_index", None)
 
         # 初始扰动：施加随机方向电压若干步，把等离子体推离平衡点（regulation 任务起点）
+        reset_anomaly = None
         if self.init_disturb_steps > 0:
             try:
                 n_active = self._stepping.evol_metal_curr.n_active_coils
@@ -203,18 +204,31 @@ class FreeGSNKELinearPosEnv(gym.Env):
                     self._stepping.nlstepper(active_voltage_vec=v, linear_only=True,
                                              no_GS=True, verbose=False)
             except Exception as e:
-                # v0.1.1（审核 R6）：不再静默吞错——记录告警并继续（退化为无扰动起点）
+                # v0.1.1 复核（D项）：扰动中途失败会留下部分推进状态。
+                # 不再带病继续——重建基线初值并在 info 中显式标记，由评估器判定样本有效性。
                 import warnings
-                warnings.warn(f"初始扰动施加失败，退化为无扰动起点：{e!r}")
+                warnings.warn(f"初始扰动异常，重建基线初值并标记样本：{e!r}")
+                reset_anomaly = repr(e)
+                try:
+                    eq2 = self._eq_base.create_auxiliary_equilibrium()
+                    for k, v2 in self._base_currents.items():
+                        eq2.tokamak.set_coil_current(coil_label=k, current_value=v2)
+                    self._stepping.initialize_from_ICs(eq2, self._profiles_base)
+                except Exception as e2:
+                    reset_anomaly = f"{reset_anomaly}; rebuild failed: {e2!r}"
 
         self._step_count = 0
         self._prev_d = None  # 每个 episode 导数观测从零开始
+        info = {"target": self._target.tolist()}
+        if reset_anomaly is not None:
+            info["reset_anomaly"] = reset_anomaly
         try:
-            return self._obs(), {"target": self._target.tolist()}
+            return self._obs(), info
         except Exception as e:
             import warnings
-            warnings.warn(f"reset 观测构建失败，返回零观测：{e!r}")
-            return np.zeros(self.observation_space.shape, dtype=np.float32), {"obs_error": repr(e)}
+            warnings.warn(f"reset 观测构建失败，返回零观测并标记样本：{e!r}")
+            info["obs_error"] = repr(e)
+            return np.zeros(self.observation_space.shape, dtype=np.float32), info
 
     def step(self, action):
         action = np.clip(np.asarray(action, dtype=np.float64), -1.0, 1.0)

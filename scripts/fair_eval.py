@@ -85,11 +85,14 @@ class PPOController:
 
 
 def run_episode(env, controller, seed, max_steps=50):
-    obs, _ = env.reset(seed=seed)
+    obs, reset_info = env.reset(seed=seed)
     controller.reset(obs)
+    # v0.1.1 复核（D项）：reset 异常样本显式标记，不得混入正常配对样本
+    sample_valid = not (reset_info.get("reset_anomaly") or reset_info.get("obs_error"))
     z_errs, joint_errs, acts = [], [], []
     holds, done = 0, False
     final_joint = np.nan
+    fail_reason = None
     while not done:
         a = np.clip(controller.act(obs), -1, 1)
         acts.append(a)
@@ -100,34 +103,45 @@ def run_episode(env, controller, seed, max_steps=50):
             z_errs.append(abs(obs[2]) * 0.1)
             joint_errs.append((abs(obs[2]) + abs(obs[3])) * 0.1)
             final_joint = joint_errs[-1]
+        else:
+            fail_reason = info["fail_reason"]
     acts = np.abs(np.array(acts)) if acts else np.zeros((1, 3))
+    complete = bool(holds >= max_steps)
+    traj_mae_z = float(np.mean(z_errs) * 100) if z_errs else None
+    traj_mae_joint = float(np.mean(joint_errs) * 100) if joint_errs else None
     return {
         "seed": seed,
-        "complete": bool(holds >= max_steps),
+        "complete": complete,
+        "sample_valid": sample_valid,
         "holds": holds,
-        "mae_z_cm": float(np.mean(z_errs) * 100) if z_errs else None,
-        "mae_joint_cm": float(np.mean(joint_errs) * 100) if joint_errs else None,
-        "final_joint_cm": float(final_joint * 100) if np.isfinite(final_joint) else None,
-        "fail_reason": info["fail_reason"],
+        # v0.1.1 复核（C项）：误差主指标仅对完整回合给出；失败回合的存活段误差
+        # 单独存为 fail_traj_*（诊断用），不混入主误差均值——与协议声明一致。
+        "mae_z_cm": traj_mae_z if complete else None,
+        "mae_joint_cm": traj_mae_joint if complete else None,
+        "final_joint_cm": (float(final_joint * 100) if np.isfinite(final_joint) else None) if complete else None,
+        "fail_traj_mae_z_cm": None if complete else traj_mae_z,
+        "fail_reason": fail_reason,
         "act_mean": float(acts.mean()),
         "sat_ratio": float((acts > 0.99).mean()),
     }
 
 
 def summarize(name, rows):
-    def m(key):
-        vals = [r[key] for r in rows if r[key] is not None]
+    def m(key, only_complete=True):
+        vals = [r[key] for r in rows if r.get(key) is not None and (r["complete"] or not only_complete)]
         return float(np.mean(vals)) if vals else float("nan")
-    n_complete = sum(1 for r in rows if r["complete"])
+    valid_rows = [r for r in rows if r["sample_valid"]]
+    n_complete = sum(1 for r in valid_rows if r["complete"])
     return {
         "controller": name,
         "episodes": len(rows),
+        "valid_samples": len(valid_rows),
         "complete": n_complete,
         "mae_z_cm": m("mae_z_cm"),
         "mae_joint_cm": m("mae_joint_cm"),
         "final_joint_cm": m("final_joint_cm"),
-        "act_mean": m("act_mean"),
-        "sat_ratio": m("sat_ratio"),
+        "act_mean": m("act_mean", only_complete=False),
+        "sat_ratio": m("sat_ratio", only_complete=False),
     }
 
 
@@ -159,10 +173,10 @@ def main():
         rows = [run_episode(env, ctrl, args.seed0 + i) for i in range(args.episodes)]
         results[name] = {"episodes": rows, "summary": summarize(name, rows)}
 
-    print(f"\n{'控制器':<32}{'完整回合':>8}{'MAE_Z(cm)':>12}{'MAE联合(cm)':>12}{'末端联合(cm)':>12}{'饱和率':>8}")
+    print(f"\n{'控制器':<32}{'完整/有效/总':>14}{'MAE_Z(cm)':>12}{'MAE联合(cm)':>12}{'末端联合(cm)':>12}{'饱和率':>8}")
     for name, data in results.items():
         s = data["summary"]
-        print(f"{name:<32}{s['complete']:>5}/{s['episodes']:<3}{s['mae_z_cm']:>12.3f}"
+        print(f"{name:<32}{s['complete']:>5}/{s['valid_samples']:>3}/{s['episodes']:<3}{s['mae_z_cm']:>12.3f}"
               f"{s['mae_joint_cm']:>12.3f}{s['final_joint_cm']:>12.3f}{s['sat_ratio']:>8.2%}")
 
     if args.out:

@@ -32,7 +32,8 @@ def run_episode(env, kp, kd, p6_idx, seed):
         done = term or trunc
         if not term:
             holds += 1
-            errs.append(abs(z_err) * 0.1)  # 米
+            # v0.1.1 复核（E项）：动作后采样（与 fair_eval 主评估口径一致）
+            errs.append(abs(obs[2]) * 0.1)  # 米
     return holds, (np.mean(errs) if errs else np.nan), info["fail_reason"]
 
 

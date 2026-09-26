@@ -70,7 +70,8 @@ class EvalCallback(BaseCallback):
                     if term:
                         fails += 1
                 rewards.append(cum)
-                if ep_errs:  # 仅存活轨迹计入误差
+                # v0.1.1 复核（C项）：失败回合的存活段误差不计入误差均值（与 fair_eval 一致）
+                if ep_errs and not term:
                     valid_errs.append(float(np.mean(ep_errs)))
             row = {
                 "steps": self.num_timesteps,
