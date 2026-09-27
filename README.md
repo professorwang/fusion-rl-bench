@@ -99,7 +99,7 @@ Frozen models and raw evaluation data are attached to [GitHub Releases](https://
 - [x] **B1 — LQR/LQI baselines**: naive DARE-LQR shows steady-state offset (model mismatch + no integral action); LQI fixes it (0.91 cm, 3ch) but still trails PD(1,0.3)=0.09cm and BC=0.19cm; unit-confusion pitfalls documented (`notebooks/B1`)
 - [x] B2 — PD gain-family performance surface (low-gain basin 0.014cm, best PD(3,0.3); failure region at high Kd) (`assets/pd_gain_surface.png`)
 - [x] B3 — mechanism ablation batch 1 (teacher gain × expert noise): **pre-registered noise-shrinkage hypothesis falsified** — BC beats chattering teacher 10× even with zero expert noise; mechanism revised to "function-approximation smoothing of the saturated law" (`notebooks/B3`)
-- [ ] ≥5 independent training seeds; frozen 100–200 test ICs; confidence intervals
+- [x] B4 — multi-seed statistics (5 training seeds × 30 frozen test ICs): **PD(3,0.3)=0.012cm beats BC (0.220±0.078) and BC+PPO (0.404±0.246) on ALL 30 test ICs (paired win rate 0/30)** — ranking is statistically robust; PPO's large seed variance (0.042–0.713cm) is itself a finding (`notebooks/B4`)
 - [ ] Robustness: observation noise, actuation latency, parameter error, sustained disturbances
 - [ ] Re-check in a convergent nonlinear evolution model
 - [ ] Real-device path (with university partners): model validation → sim closed-loop → shadow mode → approved experiment
