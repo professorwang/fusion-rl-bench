@@ -97,8 +97,8 @@ Frozen models and raw evaluation data are attached to [GitHub Releases](https://
 
 - [x] **B0 — discrete model validation**: sysid at actual 0.5 ms control period; one-step Zcur err 1.3%; dominant eigenvalue within 0.14% of simulator (1.1254 vs 1.1238) (`notebooks/B0`)
 - [x] **B1 — LQR/LQI baselines**: naive DARE-LQR shows steady-state offset (model mismatch + no integral action); LQI fixes it (0.91 cm, 3ch) but still trails PD(1,0.3)=0.09cm and BC=0.19cm; unit-confusion pitfalls documented (`notebooks/B1`)
-- [ ] B2 — PD gain-family performance surface (running)
-- [ ] B3 — mechanism ablation (teacher gain × expert noise × observation × horizon)
+- [x] B2 — PD gain-family performance surface (low-gain basin 0.014cm, best PD(3,0.3); failure region at high Kd) (`assets/pd_gain_surface.png`)
+- [x] B3 — mechanism ablation batch 1 (teacher gain × expert noise): **pre-registered noise-shrinkage hypothesis falsified** — BC beats chattering teacher 10× even with zero expert noise; mechanism revised to "function-approximation smoothing of the saturated law" (`notebooks/B3`)
 - [ ] ≥5 independent training seeds; frozen 100–200 test ICs; confidence intervals
 - [ ] Robustness: observation noise, actuation latency, parameter error, sustained disturbances
 - [ ] Re-check in a convergent nonlinear evolution model
