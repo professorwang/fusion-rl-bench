@@ -65,3 +65,21 @@ python -m venv .venv-gs
 
 - 当前：本机 CPU（Windows）；TORAX 基于 JAX，CPU 即可跑 1.5D 输运；
 - 后续 RL 训练量大时：按需租云 GPU（AutoDL/腾讯云，4090 级约 2–3 元/小时）。
+
+## macOS 环境（2026-10-08 增补）
+
+工作区在 exFAT 移动硬盘上跨 Windows/macOS 使用。macOS 侧（Intel x86_64, macOS 12.7）环境：
+
+| 组件 | 安装方式 |
+|---|---|
+| Python 3.12.15 | `uv python install 3.12`（预编译，秒级；brew 在本机需源码构建 openssl/python，弃用） |
+| venv `~/.venv-fusion-mac`（**本地盘**，非工作区） | `python3.12 -m venv` |
+| 依赖 | `uv pip install`：numpy==1.26.4、scipy>=1.15.3、torch==2.2.2（Intel Mac 最后一个有 x86_64 wheel 的 torch）、stable_baselines3==2.4.1、numba==0.60.0 + llvmlite==0.43.0（**钉死**：llvmlite ≥0.44 macOS 仅发 arm64 wheel，x86_64 会退化为 LLVM 源码构建且失败）、freegs4e 0.14、shapely、h5py、deepdiff、scikit-image、cvxpy、matplotlib；freegsnke 3.1.0 以 `--no-deps -e code/vendor/freegsnke` 可编辑安装（跳过 notebook 重依赖） |
+
+macOS 排坑：
+
+13. **不要把 venv 建在外接 exFAT 盘上**：小文件随机写入极慢（uv 安装 40 分钟仅写 2 个包）；venv 与 uv 缓存放本地盘（硬链接秒装）。
+14. **llvmlite x86_64 无 wheel**：freegs4e 0.14 依赖 numba≥0.60 → 默认解析到 numba 0.68/llvmlite 0.50（arm64-only），必须显式钉 `numba==0.60.0 llvmlite==0.43.0`。
+15. **性能**：首次 reset 173s（基线构建+numba JIT，一次性）；之后 reset 0.46s、step ~16ms（60+ 步/秒）。B3 第二批全部实验（含 PPO 16000 步微调）合计约 45 分钟 CPU。
+16. **跨平台数值漂移**：同一冻结权重 + 同种子，Windows 与 macOS 评估结果有 ±2%–80% 相对偏差（开环不稳定通道放大数值细节）；同机配对比较不受影响，跨平台绝对值比较须谨慎（见 `notebooks/B3b` 第四节）。
+17. matplotlib 中文需 `plt.rcParams["font.sans-serif"]=["PingFang SC",...]`（DejaVu Sans 无 CJK 字形）。
