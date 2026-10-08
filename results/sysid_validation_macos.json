@@ -1,0 +1,17 @@
+{
+  "note": "macOS (x86_64) 本机重新辨识；协议与 B0 相同；冻结 Windows 模型未改动",
+  "state_dim": 16,
+  "input_dim": 3,
+  "control_period_s": 0.0005,
+  "samples": 4000,
+  "rollouts": 100,
+  "steps_per_rollout": 40,
+  "one_step_mean_rel_err": {
+    "coils": 0.03155368536499723,
+    "Rx": 0.0216002830711072,
+    "Zx": 0.02023740945343831,
+    "Zcur": 0.01348143261181955,
+    "Rin": 0.023038391836509388
+  },
+  "A_max_eigval_abs": 1.1253778414884477
+}
