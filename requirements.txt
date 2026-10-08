@@ -1,0 +1,35 @@
+# fusion-rl-bench 复现依赖（冻结模型评估链，v0.2.0）
+#
+# 参考环境：Python 3.12.15（Windows 11 / macOS 12.7 x86_64 均验证）。
+# Python 版本要求 3.10–3.12：numba 0.60 不支持 3.13。
+#
+# 注意：freegsnke **不在**本文件中——PyPI 版 freegsnke 3.0.1 缺少
+# NKGSsolver(gs_operator_order=...) 参数（docs/SETUP.md 排坑 6），
+# 必须按 docs/REPRODUCE.md 第 3 步从 GitHub 源码安装（钉 commit）。
+#
+# 平台差异：
+# - Intel Mac（x86_64）：llvmlite==0.43.0 与 numba==0.60.0 必须钉死——
+#   llvmlite ≥0.44 的 macOS 发行仅有 arm64 wheel，x86_64 会退化为 LLVM
+#   源码构建且失败（docs/SETUP.md 排坑 14）。torch==2.2.2 是 Intel Mac
+#   最后一个有 x86_64 wheel 的版本。
+# - Windows / Apple Silicon：下列钉版同样可用；如需更新版本，
+#   llvmlite/numba/torch 可放宽（自担数值漂移风险，见 docs/REPRODUCE.md）。
+
+numpy==1.26.4          # freegsnke/freegs4e 要求 numpy<2.5，钉死与参考环境一致
+scipy==1.17.1          # freegsnke 要求 >=1.15.3,<2
+torch==2.2.2           # BC 策略 / SB3 后端；CPU 即可
+stable_baselines3==2.4.1
+gymnasium==1.0.0
+matplotlib==3.11.2     # 出图（重出全图需要；纯评估链也非必需但建议装上）
+
+# freegs4e 传递依赖 numba——必须显式钉版，见上方平台差异说明
+numba==0.60.0
+llvmlite==0.43.0
+
+freegs4e==0.14.0       # FreeGSNKE 的平衡求解后端（PyPI freegsnke 不自动携带）
+shapely==2.2.0
+threadpoolctl==3.7.0
+h5py==3.16.0           # freegsnke 装置数据/结果存储
+deepdiff==9.1.0        # freegsnke 均衡对比工具（源码安装 freegsnke 时用 --no-deps，故不受其 <9 声明约束）
+scikit-image==0.26.0   # freegsnke 等值线/区域分析
+cvxpy==1.7.5           # freegsnke 部分求解路径
