@@ -15,6 +15,11 @@
    （种子 3000–3009、PD Kp=1 Kd=0.3、配对、动作后采样——与冻结口径一致）；
 4. 与冻结 fair_eval_v013_s3000.json 逐控制器对照，输出 通过/漂移/失败 表。
 
+发布说明：Release v0.2.0 当前仅含 SHA256SUMS.txt 所列 24 个文件中的 19 个；
+B3 第二批消融产物（ablation_obs/horizon/transfer 的 json+png，共 6 个）未上传
+发布。对这类文件脚本自动回退到仓库内 results/、assets/ 的同名文件做哈希核对
+（状态记为"仓库内匹配(发布缺失)"），哈希覆盖率保持 24/24。
+
 判据（跨平台数值漂移已证实，同一冻结权重+同种子，Windows↔macOS 相对偏差
 最大约 ×1.8——开环不稳定通道放大数值细节，见 docs/SETUP.md 排坑 16）：
 - 通过 PASS：资产哈希全部匹配；各控制器完整回合数与冻结值一致；
@@ -67,40 +72,76 @@ def sha256_of(path):
 
 
 def download(name, dest, timeout=300):
+    """下载单个资产；404（发布中不存在）返回 False，其他错误照常抛出。"""
     url = f"{DOWNLOAD_BASE}/{name}"
     tmp = dest + ".part"
     req = urllib.request.Request(url, headers={"User-Agent": "fusion-rl-bench-verify"})
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
+            while True:
+                chunk = r.read(1 << 20)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except urllib.error.HTTPError as e:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        if e.code == 404:
+            return False
+        raise
     os.replace(tmp, dest)
+    return True
+
+
+# 发布资产缺失时的仓库内回退核对目录（v0.2.0 发布有 19/24 资产；
+# B3 第二批消融的 6 个文件仅在仓库 results/、assets/ 中，哈希一致）
+LOCAL_CANDIDATES = ["results", "assets", "runs"]
+
+
+def find_local(name):
+    for d in LOCAL_CANDIDATES:
+        p = os.path.join(REPO_ROOT, d, name)
+        if os.path.exists(p):
+            return p
+    return None
 
 
 def step_download_and_hash(sums, assets_dir, skip_download):
     print(f"\n== 1/3 冻结资产下载与 SHA256 核对（{len(sums)} 个文件，{RELEASE_TAG}）==")
     os.makedirs(assets_dir, exist_ok=True)
-    rows, n_ok = [], 0
+    rows, n_ok, n_release_missing = [], 0, 0
     for name, want in sums.items():
         dest = os.path.join(assets_dir, name)
-        if not skip_download:
-            if os.path.exists(dest) and sha256_of(dest) == want:
-                pass  # 已存在且正确，幂等跳过
-            else:
-                print(f"  下载 {name} …", flush=True)
-                download(name, dest)
-        if not os.path.exists(dest):
-            rows.append((name, want, None, "缺失"))
+        if not skip_download and not (
+                os.path.exists(dest) and sha256_of(dest) == want):
+            print(f"  下载 {name} …", flush=True)
+            if not download(name, dest):
+                n_release_missing += 1
+                print(f"  [发布缺失] {name} 不在 Release {RELEASE_TAG} 资产中，"
+                      "回退仓库内文件核对")
+        src, got = None, None
+        if os.path.exists(dest):
+            src, got = "release", sha256_of(dest)
+        else:
+            local = find_local(name)
+            if local is not None:
+                src = "repo:" + os.path.relpath(local, REPO_ROOT)
+                got = sha256_of(local)
+        if got is None:
+            rows.append((name, want, None, "缺失", None))
             continue
-        got = sha256_of(dest)
         ok = got == want
         n_ok += ok
-        rows.append((name, want, got, "匹配" if ok else "不匹配"))
+        if ok:
+            status = "匹配" if src == "release" else "仓库内匹配(发布缺失)"
+        else:
+            status = "不匹配"
+        rows.append((name, want, got, status, src))
         if not ok:
-            print(f"  [不匹配] {name}\n    期望 {want}\n    实际 {got}")
-    print(f"  SHA256 核对：{n_ok}/{len(sums)} 匹配")
+            print(f"  [不匹配] {name}（{src}）\n    期望 {want}\n    实际 {got}")
+    print(f"  SHA256 核对：{n_ok}/{len(sums)} 匹配"
+          + (f"（其中 {n_release_missing} 个发布缺失、以仓库内文件核对）"
+             if n_release_missing else ""))
     return rows, n_ok == len(sums)
 
 
@@ -307,9 +348,13 @@ def main():
 
     report = {"release": RELEASE_TAG, "environment": info,
               "hash_check": {"total": len(hash_rows),
-                             "matched": sum(1 for r in hash_rows if r[3] == "匹配"),
+                             "matched": sum(1 for r in hash_rows
+                                            if r[3] in ("匹配", "仓库内匹配(发布缺失)")),
+                             "release_missing": sum(1 for r in hash_rows
+                                                    if r[3] == "仓库内匹配(发布缺失)"),
                              "rows": [{"file": r[0], "expected": r[1],
-                                       "actual": r[2], "status": r[3]}
+                                       "actual": r[2], "status": r[3],
+                                       "source": r[4]}
                                       for r in hash_rows]},
               "batches": batches, "overall": overall}
     out = args.out or os.path.join(args.assets_dir, "verify_report.json")

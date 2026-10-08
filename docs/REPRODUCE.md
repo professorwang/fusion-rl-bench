@@ -103,6 +103,11 @@ bc_policy.pt / ppo_final.zip 跑 `fair_eval`（种子 3000–3009，PD Kp=1 Kd=0
 与冻结 `fair_eval_v013_s3000.json` 对照，打印"通过/漂移/失败"表并输出
 `verify_report.json`。
 
+> 发布现状：Release v0.2.0 当前含 19/24 个 SHA256SUMS.txt 所列文件；B3 第二批
+> 消融产物（ablation_obs/horizon/transfer 的 json+png）未上传发布，脚本自动
+> 回退到仓库内 `results/`、`assets/` 同名文件核对哈希（报告中标
+> "仓库内匹配(发布缺失)"），哈希覆盖率仍为 24/24。
+
 常用选项：`--skip-download`（资产已就位）、`--skip-eval`（只核哈希）、
 `--second-batch`（追加种子 3010–3019 对照）、`--tol`（调容差）、
 `--assets-dir` / `--out`。
