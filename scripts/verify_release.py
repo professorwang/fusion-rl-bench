@@ -74,7 +74,7 @@ def sha256_of(path):
     return h.hexdigest()
 
 
-def download(name, dest, timeout=300, retries=3):
+def download(name, dest, timeout=300, retries=5):
     """下载单个资产；404（发布中不存在）返回 False；瞬时网络错误退避重试。"""
     url = f"{DOWNLOAD_BASE}/{name}"
     tmp = dest + ".part"
