@@ -33,11 +33,14 @@ B3 第二批消融产物（ablation_obs/horizon/transfer 的 json+png，共 6 �
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import platform
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -71,26 +74,39 @@ def sha256_of(path):
     return h.hexdigest()
 
 
-def download(name, dest, timeout=300):
-    """下载单个资产；404（发布中不存在）返回 False，其他错误照常抛出。"""
+def download(name, dest, timeout=300, retries=3):
+    """下载单个资产；404（发布中不存在）返回 False；瞬时网络错误退避重试。"""
     url = f"{DOWNLOAD_BASE}/{name}"
     tmp = dest + ".part"
     req = urllib.request.Request(url, headers={"User-Agent": "fusion-rl-bench-verify"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
-            while True:
-                chunk = r.read(1 << 20)
-                if not chunk:
-                    break
-                f.write(chunk)
-    except urllib.error.HTTPError as e:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        if e.code == 404:
-            return False
-        raise
-    os.replace(tmp, dest)
-    return True
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+            os.replace(tmp, dest)
+            return True
+        except urllib.error.HTTPError as e:  # HTTPError 是 URLError 子类，须先捕获
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            if e.code == 404:
+                return False
+            if attempt == retries:
+                raise
+        except (urllib.error.URLError, http.client.HTTPException,
+                TimeoutError, OSError):
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            if attempt == retries:
+                raise
+        wait = 2 ** attempt
+        print(f"    网络错误，{wait}s 后重试（第 {attempt}/{retries} 次）…",
+              flush=True)
+        time.sleep(wait)
+    return False  # 不可达（retries 次后已抛出），防御性保留
 
 
 # 发布资产缺失时的仓库内回退核对目录（v0.2.0 发布有 19/24 资产；
