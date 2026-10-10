@@ -17,6 +17,12 @@
 数值细节，见 `docs/SETUP.md` 排坑 16 与 `notebooks/B3b` 第四节）。同机配对比较不受
 影响。
 
+> ⚠️ **上述漂移容差不适用于模型驱动控制器**（LQR/LQI/LQG 等基于辨识模型的反馈）：
+> B6 实测 Windows 辨识的 `sysid_model.npz` 在 macOS 上使全状态 LQI 直接失稳（0/10），
+> 尽管主导极点一致（A 矩阵 Frobenius 差 77.5%，见 `notebooks/B6-LQG部分观测基线.md`）。
+> 模型驱动实验必须在运行平台上重新辨识模型（`scripts/sysid_linear.py`），
+> 不得跨平台移植冻结模型。
+
 `scripts/verify_release.py` 的判定逻辑：
 
 | 判定 | 条件 | 退出码 |
